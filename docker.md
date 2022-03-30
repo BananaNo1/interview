@@ -171,9 +171,11 @@ redis.conf
 
 ```
 
-#### 进阶
+### 进阶
 
-##### mysql主从复制
+#### mysql主从复制
+
+##### 新建主服务器容器实例3307
 
 ```shell
 docker run -p 3307:3306 --name mysql-server --privileged=true -v /mydata/mysql-master/log:/var/log/mysql \
@@ -183,3 +185,300 @@ docker run -p 3307:3306 --name mysql-server --privileged=true -v /mydata/mysql-m
 -d mysql:5.7
 ```
 
+##### conf中新建my.cnf
+
+```sql
+[mysqld]
+server_id=101
+#自带数据库
+binlog-ignore-db=mysql
+log-bin=mall-mysql-bin
+binlog_cache_size=1M
+binlog_format=mixed
+expire_logs_days=7
+slave_skip_errors=1062
+```
+
+##### 重启master
+
+##### 进入容器 
+
+`docker exec -it mysql-server /bin/bash`
+
+`mysql -uroot -p`
+
+##### 创建数据同步用户
+
+```sql
+create user 'slave'@'%' identified by '123456';
+grant replication slave,replication client on *.* to 'slave'@'%';
+```
+
+##### 新建从服务器 3308
+
+```
+docker run -p 3308:3306 --name mysql-slave --privileged=true -v /mydata/mysql-slave/log:/var/log/mysql \
+-v /mydata/mysql-slave/data:/var/lib/mysql \
+-v /mydata/mysql-slave/conf:/etc/mysql \
+-e MYSQL_ROOT_PASSWORD=123456 \
+-d mysql:5.7
+```
+
+##### conf中新建my.cnf
+
+```sql
+[mysqld]
+server_id=102
+binlog-ignore-db=mysql
+log-bin=mall-mysql-slave1-bin
+binlog_cache_size=1M
+binlog_format=mixed
+expire_logs_days=7
+slave_skip_errors=1062
+relay_log=mall-mysql-relay-bin
+log_slave_updates=1
+read_only=1
+```
+
+##### 重启slave
+
+##### 在主数据库中查看同步状态
+
+`show master status`
+
+##### 进入从机
+
+##### 在从数据库中配置主从复制
+
+`change master to master_host='192.168.5.128', master_user='slave', master_password='123456', master_port=3307, master_log_file='mall-mysql-bin.000001', master_log_pos= 617, master_connect_retry=30;`
+
+**注意同步文件名称**
+
+#####  在从数据库中查看同步状态
+
+`show slave status \G`     \G 可加可不加
+
+#####  在从数据库中开启主从同步
+
+  `start slave`
+
+### 分布式存储
+
+#### 解决方案
+
+	1. 分布式哈希取余分区     问题:扩容缩容
+	2. 一致性哈希算法分区   形成环   问题:数据倾斜
+	3. 哈希槽分区  redis最多16384个
+
+#### redis集群
+
+##### 启动redis
+
+```
+docker run -d --name redis-node-1 --net host --privileged=true -v /mydata/redis/share/redis-node-1:/data redis --cluster-enabled yes --appendonly yes --port 6381
+
+docker run -d --name redis-node-2 --net host --privileged=true -v /mydata/redis/share/redis-node-2:/data redis --cluster-enabled yes --appendonly yes --port 6382
+
+docker run -d --name redis-node-3 --net host --privileged=true -v /mydata/redis/share/redis-node-3:/data redis --cluster-enabled yes --appendonly yes --port 6383
+
+docker run -d --name redis-node-4 --net host --privileged=true -v /mydata/redis/share/redis-node-4:/data redis --cluster-enabled yes --appendonly yes --port 6384
+
+docker run -d --name redis-node-5 --net host --privileged=true -v /mydata/redis/share/redis-node-5:/data redis --cluster-enabled yes --appendonly yes --port 6385
+
+docker run -d --name redis-node-6 --net host --privileged=true -v /mydata/redis/share/redis-node-6:/data redis --cluster-enabled yes --appendonly yes --port 6386
+
+## 扩容缩容
+docker run -d --name redis-node-7 --net host --privileged=true -v /mydata/redis/share/redis-node7:/data redis --cluster-enabled yes --appendonly yes --port 6387
+
+docker run -d --name redis-node-8 --net host --privileged=true -v /mydata/redis/share/redis-node-8:/data redis --cluster-enabled yes --appendonly yes --port 6388
+```
+
+##### 进入node1构建主从关系
+
+`redis-cli --cluster create 192.168.5.128:6381 192.168.5.128:6382 192.168.5.128:6383 192.168.5.128:6384 192.168.5.128:6385 192.168.5.128:6386 --cluster-replicas 1`
+
+`--cluster-replicas 1`  为每个master创建一个slave
+
+##### 进入节点查看节点信息
+
+1. cluster info 
+2. cluster nodes
+
+##### 连接集群环境
+
+`redis-cli -p 6381 -c`
+
+ 不加 `-c`会出现集群读写error 
+
+##### 查看集群信息
+
+`redis-cli --cluster check 192.168.5.128:6381`
+
+#### 扩容
+
+1. 启动节点7，节点8 
+
+2. 进入节点7 
+
+3. 节点7加入集群  `redis-cli --cluster add-node IP:6387 IP:6381`  `redis-cli --cluster add-node 192.168.5.128:6387 192.168.5.128:6381`
+
+4. 查看集群状态 `redis-cli --cluster check 192.168.5.128:6381`
+
+5. 分配槽号 `redis-cli --cluster reshard 192.168.5.128:6381`
+
+   6381分配前 0-5460  分配后 1365-5460
+
+   6387分配前 0  分配后 [0-1364],[5461-6826],[10923-12287]
+
+6. 查看集群信息
+
+   前三家各自匀出一部分槽号
+
+7. 给6387添加从机6388 `redis-cli --cluster add-node ip:新slave端口 ip:新master端口 --cluster-slave --cluster-master-id 新节点主机` 
+
+   `redis-cli --cluster add-node 192.168.5.128:6388 192.168.5.128:6387 --cluster-slave --cluster-master-id 73e740eef903d8509a6f7841ede760ae09fdcee0`
+
+8. 查看集群信息  6388已加入成功
+
+
+
+#### 缩容(下线6387 6388)
+
+​	6387是master 6388是slave  先下线从机 再下线主机
+
+1. 检查集群信息 `redis-cli --cluster check 192.168.5.128:6382`
+2. 删除6388 `redis-cli --cluster del-node ip:从机端口 从机节点ID`
+3. 将6387的槽号清空，重新分配 (统一分配给6381) `redis-cli --cluster reshard 192.168.5.128:6381`
+4. 查看集群信息 `redis-cli --cluster check 192.168.5.128:6382`
+5. 删除6387
+
+### dockerfile
+
+#### 基础命令
+
+  **大写**
+
+1. FROM 指定一个镜像作为模板  **第一条必须是FROM**
+2. MAINTAINER 镜像维护者的姓名和邮箱地址
+3. RUN 容器构建时需要运行的命令
+   1. shell格式  `RUN yum install vim -y`
+   2. exec格式 `RUN["可执行文件","参数1","参数2"]`
+   3. 在==docker build==时运行
+4. EXPOSE 当前容器对外暴露的端口
+5. WORKDIR 指定容器创建后，终端默认登录进来的工作目录，一个落脚点
+6. USER 指定该镜像以什么样的用户去执行，如果都不指定，默认是root
+7. ENV 用来在构建镜像过程中设置环境变量
+8. ADD  将宿主机下的文件拷贝进镜像且会自动处理URL和解压tar压缩包
+9. COPY 拷贝文件和目录到镜像中 ` COPY ["src" "dest"]`
+10. VOLUME 容器数据卷，用于数据保存和持久化工作
+11. CMD 指定容器启动后要干的事情
+    1. 可以有多个CMD，但只有最后一个生效，CMD会被docker run之后的参数替换
+    2. 在==docker run==时运行 **注意和RUN区别**
+12. ENPRYPOINT 指定容器启动时要运行的命令
+    1. ENPRYPOINT **不会**被docker run后面的命令覆盖，而且这些命令行参数会被当作参数送给ENPRYPOINT指令指定的程序
+
+#### Dockerfile 编写 centos
+
+```dockerfile
+
+# 下载jdk
+# wget https://mirrors.huaweicloud.com/java/jdk/8u171-b11/jdk-8u171-linux-x64.tar.gz
+FROM centos:7
+MAINTAINER sl<.com>
+
+ENV MYPATH /usr/local
+WORKDIR $MYPATH
+
+#安装vim
+RUN yum -y install vim
+#安装ifconfig
+RUN yum -y install net-tools
+#安装JAVA8 以及lib库
+RUN yum -y install glibc.i686
+RUN mkdir /usr/local/java
+ADD jdk-8u171-linux-x64.tar.gz    /usr/local/java/
+
+#配置java环境变量
+ENV JAVA_HOME /usr/local/java/jdk1.8.0_171
+ENV JRE_HOME $JAVA_HOME/jre
+ENV CLASS_PATH $JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar:$JAVA_HOME/lib:$CLASS_PATH
+ENV PATH $JAVA_HOME/bin:$PATH
+
+EXPOSE 80
+
+CMD echo $MYPATH
+CMD echo "success---------------ok"
+CMD /bin/bash
+```
+
+`docker build -t centosjava8:1.5 .`   这个 `.`，实际上是在指定上下文的目录，`docker build` 命令会将该目录下的内容打包交给 Docker 引擎以帮助构建镜像。
+
+#### 虚悬镜像
+
+**respository tag全部为空的镜像**
+
+`docker image ls -f dangling=true` 查看虚悬镜像
+
+`docker image prune` 删除虚悬镜像
+
+### Docker 网络
+
+##### 自定义桥接镜像
+
+​	可以通过名称访问实例 不用写死ip
+
+### Docker compose
+
+```yaml
+version:"3"
+
+services:
+	microService:
+		image:
+		container_name:   # --name
+		ports:
+			-
+		volumes:
+			-
+		networks:
+			- sl_network
+		depends_on:
+			- redis
+			- mysql
+	
+	redis:
+		image: redis:6.0.8
+		ports:
+		 	- "6379:6379"
+		volumes:
+			- /app/redis/redis.conf:/etc/redis/redis.conf
+			- /app/redis/data:/data
+		networks:
+			- sl_network
+		command: redis-server /etc/redis/redis.conf
+	
+	mysql:
+		image: mysql:5.7
+		enviroment:
+			MYSQL_ROOT_PASSWORD: '123456'
+			MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
+			MYSQL_DATABASE: 'db'
+			MYSQL_USER: 'zzyy'
+			MYSQL_PASSWORD: 'zzyy123'
+			ports:
+				- "3306":3306
+			volumes:
+				- /app/mysql/db:/var/lib/mysql
+				- /app/mysql/conf/my.cnf:/etc/my.cnf
+				- /app/mysql/init:/docker-entrypoint-initdb.d
+			networks:
+				- sl_network
+			command:	--default-authentication-plugin=mysql_native_password #解决外部无法访问
+			
+networks:
+	sl_network:
+```
+
+1. docker-compose config -q
+
+2. docker-compose up -d
