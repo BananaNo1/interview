@@ -218,3 +218,26 @@ linux 查看进程 `ps -ef`
 jconsole远程连接java进程  
 在linux上启动java进程 `java -Djava.rmi.server.hostname=192.168.1.121 -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.pore=12345 -Dcom.sun.management.jmxremote.ssl=false -Dcom.management.jmxremote.authenticate=false name`
 
+#### **synchronized**锁的升级过程
+
+锁的四种状态: 无锁->偏向锁->轻量级锁->重量锁
+
+1. 无锁没有对资源进行锁定，所有的线程都能访问并修改同一个资源，但同时只有一个线程能修改成功。
+2. 偏向锁是指一段同步代码一直被一个线程所访问，那么该线程会自动获取锁，降低获取锁的代价。
+
+3. 当锁是偏向锁的时候，被另外的线程所访问，偏向锁就会升级为轻量级锁，其他线程会通过自旋的形式尝试获取锁，不会阻塞，从而提高性能。
+4. 当自旋超过一定的次数，或者一个线程在持有锁，一个在自旋，又有第三个来访时，轻量级锁升级为重量级锁。
+
+### **synchronized**锁和ReentrantLock区别
+
+1. `synchronized`是java内置的关键字，`ReentrantLock`是java的一个类
+2. `synchronized`只能是非公平锁，`ReentrantLock`可以实现公平和非公平锁
+3. `synchronized`不能中断一个等待锁的线程，而lock可以中断一个试图获取锁的线程
+4. `synchronized`不能超时，`ReentrantLock`可以超时
+5. `synchronized`会自动释放锁，`ReentrantLock`必须手动释放
+
+### **wait()方法为什么要放在Object类中？**
+
+1. **每个对象都可上锁**，这是在 Object 类而不是 Thread 类中声明 wait 和 notify 的另一个原因。
+
+   
