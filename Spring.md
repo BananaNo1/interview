@@ -38,3 +38,67 @@ Spring Boot 通过`@EnableAutoConfiguration`开启自动装配，通过 SpringFa
 
 1. setter注入且是在单例模式下不存在循环依赖问题。
 2. setter注入且是在多例模式下无法解决循环依赖。
+
+### Spring 三级缓存
+
+| 名称                  | 作业                                                         |
+| --------------------- | ------------------------------------------------------------ |
+| singletonObjects      | 一级缓存，存放完整的 Bean。                                  |
+| earlySingletonObjects | 二级缓存，存放提前暴露的Bean，Bean 是不完整的，未完成属性注入和执行 初始化（init） 方法。 |
+| singletonFactories    | 三级缓存，存放的是 Bean 工厂，主要是生产 Bean，存放到二级缓存中。 |
+
+Spring通过三级缓存解决了循环依赖，其中一级缓存为单例池（`singletonObjects`）,二级缓存为早期曝光对象`earlySingletonObjects`，三级缓存为早期曝光对象工厂（`singletonFactories`）。当A、B两个类发生循环引用时，在A完成实例化后，就使用实例化后的对象去创建一个对象工厂，并添加到三级缓存中，如果A被AOP代理，那么通过这个工厂获取到的就是A代理后的对象，如果A没有被AOP代理，那么这个工厂获取到的就是A实例化的对象。当A进行属性注入时，会去创建B，同时B又依赖了A，所以创建B的同时又会去调用getBean(a)来获取需要的依赖，此时的getBean(a)会从缓存中获取，第一步，先获取到三级缓存中的工厂；第二步，调用对象工工厂的getObject方法来获取到对应的对象，得到这个对象后将其注入到B中。紧接着B会走完它的生命周期流程，包括初始化、后置处理器等。当B创建完后，会将B再注入到A中，此时A再完成它的整个生命周期。至此，循环依赖结束！
+
+
+
+”为什么要使用三级缓存呢？二级缓存能解决循环依赖吗？“
+
+答：如果要使用二级缓存解决循环依赖，意味着所有Bean在实例化后就要完成AOP代理，这样违背了Spring设计的原则，Spring在设计之初就是通过`AnnotationAwareAspectJAutoProxyCreator`这个后置处理器来在Bean生命周期的最后一步来完成AOP代理，而不是在实例化后就立马进行AOP代理。
+
+
+
+# Servlet三大组件
+
+##### Servlet
+
+​	Servlet是用来处理客户端请求的动态资源，也就是当我们在浏览器中键入一个地址回车跳转后，请求就会被发送到对应的Servlet上进行处理。
+
+##### Filter
+
+​	在执行Servlet之前执行，可以在Filter中进行日志输出，权限校验等。多个Filter会组成FilterChian，也就是在调用chain.doFilter(res,resp)方法时，会传给下一个过滤器（如果有），如果没有则，会访问servlet。servlet访问完之后，就会执行chan.doFilter之后的代码，也就是整个过程是在一个线程执行的。
+**servlet主要负责处理请求，而filter主要负责拦截请求**
+
+##### Listener
+
+​	它可以监听Application、Session、Request对象，当这些对象发生变化就会调用对应的监听方法。
+
+### sping中有哪些模块
+
+1. Spring Core   	框架的最基础部分，提供 IoC 容器，对 bean 进行管理
+2. Spring Context       基于 bean，提供上下文信息
+3. Spring DAO     提供了JDBC的抽象层，它可消除冗长的JDBC编码和解析数据库厂商特有的错误代码，还提供了声明性事务管理方法  
+4. Spring ORM    提供了常用的“对象/关系”映射APIs的集成层。 
+5. Spring AOP    提供了符合AOP Alliance规范的面向方面的编程实现。  
+6. Spring Web    提供了基础的 Web 开发的上下文信息
+7. Spring Web MVC   提供了 Web 应用的 Model-View-Controller 全功能实现。
+
+### Spring单例模式是线程安全的吗
+
+​		若每个线程中对全局变量、静态变量只有读操作，而无写操作，那么不会有线程安全问题；
+
+​		若有多个线程同时执行写操作，一般都需要考虑线程同步，否则就可能影响线程安全。
+
+#### 		**无状态bean和有状态bean**
+
+- 有实例变量的bean，可以保存数据，是非线程安全的。
+- 没有实例变量的对象。不能保存数据，是线程安全的。
+
+在Spring中无状态的Bean适合用单例模式，这样可以共享实例提高性能。有状态的Bean在多线程环境下不安全，一般用Prototype模式或者使用ThreadLocal解决线程安全问题。													
+
+### spring mvc有哪些组件
+
+1. 前端控制器（DispatcherServlet） 
+2. 处理器映射器(HandlerMapping) 
+3. 处理器适配器(HandlerAdapter) 
+4. 视图解析器(ViewResolver) 
+5. 视图渲染(View) 

@@ -171,6 +171,44 @@ redis.conf
 
 ```
 
+##### 安装es
+
+```shell
+docker pull elasticsearch:7.4.2
+docker pull kibana:7.4.2
+
+
+mkdir -p /mydata/elasticsearch/config
+mkdir -p /mydata/elasticsearch/data
+
+echo "http.host: 0.0.0.0" >> /mydata/elasticsearch/config/elasticsearch.yml
+
+docker run --name elasticsearch -p 9200:9200 -p 9300:9300 \
+-e "discovery.type=single-node" \
+-e ES_JAVA_OPTS="-Xms128m -Xmx512m" \
+-v /mydata/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml \
+-v /mydata/elasticsearch/data:/usr/share/elasticsearch/data \
+-v /mydata/elasticsearch/plugins:/usr/share/elasticsearch/plugins \
+-d elasticsearch:7.4.2
+
+
+docker run --name kibana -e ELASTICSEARCH_HOSTS=http://122.205.95.110:9200 -p 5601:5601 -d kibana:7.4.2
+```
+
+
+
+```
+docker run -p 80:80 --name nginx \
+-v /mydata/nginx/html:/usr/share/nginx/html \
+-v /mydata/nginx/logs:/var/log/nginx \
+-v /mydata/nginx/conf:/etc/nginx \
+-d nginx:1.10
+
+
+```
+
+
+
 ### 进阶
 
 #### mysql主从复制
