@@ -13,3 +13,36 @@
 > 执行过程： 发送命令-》执行命令-》返回结果
 >
 > 执行命令的过程是单线程的，所有的命令都会进入一个队列，然后逐个执行。
+
+### Redis删除前缀key
+
+通过SCAN命令扫描并返回前缀key
+
+```shell
+127.0.0.1:6379> scan 0 MATCH ops-coffee-* 
+1) "38"
+2)  1) "ops-coffee-25"
+    2) "ops-coffee-19"
+    3) "ops-coffee-29"
+    4) "ops-coffee-10"
+    5) "ops-coffee-23"
+    6) "ops-coffee-5"
+    7) "ops-coffee-14"
+    8) "ops-coffee-16"
+    9) "ops-coffee-11"
+   10) "ops-coffee-15"
+   11) "ops-coffee-7"
+   12) "ops-coffee-1"
+   
+# 一个包含两个元素的数组，第一个数组用于进行下一次迭代的新游，第二个元素是一个数组，包含了所有被迭代的元素
+# 扫描所有前缀为ops-coffee-*的key
+```
+
+### Redis 集群 数据分区
+
+采用**虚拟槽**进行分区，所有的键根据哈希函数映射到**0-16383**整数槽内。每一个节点负责维护一部分槽以及槽所映射的键值数据。
+
+可见`docker.md中redis集群部分`
+
+
+
