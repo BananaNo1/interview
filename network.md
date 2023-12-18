@@ -26,7 +26,7 @@
 
 ### 三次握手过程
 
-​		![三次握手](E:/interview/images/network/three.png)
+​		![三次握手](images/network/three.png)
 
 
 
@@ -38,7 +38,7 @@
 
 ### 四次挥手过程
 
-![四次挥手](E:/interview/images/network/four.png)
+![四次挥手](images/network/four.png)
 
 #### **Time_wait和Close_wait**的区别？
 
